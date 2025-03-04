@@ -5,13 +5,15 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
-# import requests
 import pickle
 import tempfile
 
+# Load environment variables
 load_dotenv()
+
 st.set_page_config(page_title="Q&A System in NLP", layout="wide")
 
+# Initialize session state variables
 if 'vectorstore' not in st.session_state:
     st.session_state.vectorstore = None
 if 'knowledge_base_type' not in st.session_state:
@@ -20,6 +22,7 @@ if 'current_file_name' not in st.session_state:
     st.session_state.current_file_name = None
 
 def process_pdf(pdf_file):
+    """Processes the uploaded PDF file and creates a FAISS vector store."""
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
         tmp_file.write(pdf_file.getvalue())
         pdf_path = tmp_file.name
@@ -30,13 +33,14 @@ def process_pdf(pdf_file):
     text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=100, separator="\n")
     split_documents = text_splitter.split_documents(documents)
     
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     vectorstore = FAISS.from_documents(split_documents, embeddings)
     
     os.unlink(pdf_path)  
     return vectorstore
 
 def save_vectorstore(vectorstore, pdf_name):
+    """Saves the FAISS vector store to a pickle file."""
     base_name = os.path.splitext(pdf_name)[0]
     pkl_filename = f"{base_name}.pkl"
     with open(pkl_filename, "wb") as f:
@@ -44,6 +48,7 @@ def save_vectorstore(vectorstore, pdf_name):
     return pkl_filename
 
 def load_vectorstore(pkl_file):
+    """Loads a FAISS vector store from a pickle file."""
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pkl') as tmp_file:
         tmp_file.write(pkl_file.getvalue())
         pkl_path = tmp_file.name
@@ -55,11 +60,12 @@ def load_vectorstore(pkl_file):
     return vectorstore
 
 def get_qa_response(vectorstore, question):
+    """Retrieves the most relevant answer from the vector store."""
     relevant_docs = vectorstore.similarity_search(question)
     context = " ".join([doc.page_content for doc in relevant_docs])
-    
     return context
 
+# Streamlit UI
 st.title("📚 Document Q&A System")
 
 with st.sidebar:
@@ -80,7 +86,7 @@ with st.sidebar:
                 saved_file = save_vectorstore(st.session_state.vectorstore, st.session_state.current_file_name)
                 st.success(f"PDF processed and saved as '{saved_file}'")
 
-    else:
+    elif knowledge_base_type == "Pre-trained Model (PKL)":
         pkl_file = st.file_uploader("Upload PKL Model", type=['pkl'])
         if pkl_file and st.session_state.knowledge_base_type != "pkl":
             with st.spinner("Loading PKL model..."):
@@ -97,4 +103,4 @@ else:
     if question:
         with st.spinner("Getting answer..."):
             answer = get_qa_response(st.session_state.vectorstore, question)
-            st.write("Answer:", answer)
+            st.write("**Answer:**", answer)
